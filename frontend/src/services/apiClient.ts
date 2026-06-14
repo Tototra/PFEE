@@ -73,7 +73,9 @@ export const alarmsApi = {
 // ─── Agent IA ────────────────────────────────────────────────────────────────
 export const agentApi = {
   diagnose: async (req: DiagnoseRequest): Promise<DiagnoseResponse> => {
-    const { data } = await apiClient.post<DiagnoseResponse>('/agent/diagnose', req);
+    const { data } = await apiClient.post<DiagnoseResponse>('/agent/diagnose', req, {
+      timeout: 60000,
+    });
     return data;
   },
 

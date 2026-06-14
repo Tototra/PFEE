@@ -60,8 +60,6 @@ Thumbs.db
 # -------- Données / runtime --------
 data/
 backend/data/
-backend/.cache/
-.cache/
 *.sqlite
 *.sqlite3
 *.db

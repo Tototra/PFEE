@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { AlertTriangle, Flame, Thermometer, Zap, X, Loader2 } from 'lucide-react';
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -28,6 +28,7 @@ function KpiCard({
 }
 
 function DiagnosticModal({ alarmId, onClose }: { alarmId: string; onClose: () => void }) {
+  const called = useRef(false);
   const mutation = useMutation({
     mutationFn: () =>
       agentApi.diagnose({
@@ -41,7 +42,9 @@ function DiagnosticModal({ alarmId, onClose }: { alarmId: string; onClose: () =>
       }),
   });
 
-  useEffect(() => { mutation.mutate(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!called.current) { called.current = true; mutation.mutate(); }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
