@@ -1,0 +1,89 @@
+
+# ─── Coach IA GTB — Stack de développement ───────────────────────────────────
+# Lancer :  docker compose up -d
+# Stopper : docker compose down
+# Logs :    docker compose logs -f <service>
+
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: coachia-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: coachia
+      POSTGRES_PASSWORD: coachia
+      POSTGRES_DB: coachia
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coachia"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: coachia-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: infra/docker/backend.Dockerfile
+    container_name: coachia-backend
+    restart: unless-stopped
+    environment:
+      APP_ENV: dev
+      DATABASE_URL: postgresql+asyncpg://coachia:coachia@postgres:5432/coachia
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-dev_secret_change_me_in_production_min32chars}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-6}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      MISTRAL_MODEL: ${MISTRAL_MODEL:-mistral-large-latest}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-mixtral-8x7b-32768}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.2}
+      NIAGARA_BASE_URL: ${NIAGARA_BASE_URL:-https://niagara.local}
+      NIAGARA_USERNAME: ${NIAGARA_USERNAME:-}
+      NIAGARA_PASSWORD: ${NIAGARA_PASSWORD:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+      - chroma_data:/app/data/chroma
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  frontend:
+    image: node:20-alpine
+    container_name: coachia-frontend
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    command: sh -c "npm install && npm run dev -- --host"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:
+  chroma_data:
+  frontend_node_modules:
