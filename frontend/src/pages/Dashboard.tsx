@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { AlertTriangle, Flame, Thermometer, Zap, X, Loader2 } from 'lucide-react';
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import ReactMarkdown from 'react-markdown';
 import { alarmsApi, energyApi, agentApi } from '../services/apiClient';
+import type { DiagnoseResponse } from '../types/api';
 
 function KpiCard({
   icon: Icon, label, value, unit, trend,
@@ -27,25 +29,19 @@ function KpiCard({
   );
 }
 
-function DiagnosticModal({ alarmId, onClose }: { alarmId: string; onClose: () => void }) {
-  const called = useRef(false);
-  const mutation = useMutation({
-    mutationFn: () =>
-      agentApi.diagnose({
-        alarm_code: alarmId,
-        alarm_label: alarmId,
-        alarm_timestamp: new Date().toISOString(),
-        equipment_name: 'Équipement GTB',
-        equipment_type: 'boiler',
-        site_name: 'Bâtiment AER Le Kremlin-Bicêtre',
-        context: {},
-      }),
-  });
-
-  useEffect(() => {
-    if (!called.current) { called.current = true; mutation.mutate(); }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
+function DiagnosticModal({
+  alarmId,
+  isPending,
+  error,
+  data,
+  onClose,
+}: {
+  alarmId: string;
+  isPending: boolean;
+  error: Error | null;
+  data: DiagnoseResponse | undefined;
+  onClose: () => void;
+}) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-2xl rounded-xl bg-white shadow-xl">
@@ -56,29 +52,26 @@ function DiagnosticModal({ alarmId, onClose }: { alarmId: string; onClose: () =>
           </button>
         </div>
         <div className="max-h-[70vh] overflow-y-auto p-5">
-          {mutation.isPending && (
+          {isPending && (
             <div className="flex items-center gap-2 text-slate-500">
               <Loader2 className="h-4 w-4 animate-spin" />
               Analyse en cours…
             </div>
           )}
-          {mutation.error && (
+          {error && (
             <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
-              Erreur : {String(mutation.error)}
+              Erreur : {String(error)}
             </div>
           )}
-          {mutation.data && (
+          {data && (
             <div className="space-y-4">
-              {mutation.data.safety_alert && (
+              {data.safety_alert && (
                 <div className="rounded-md bg-red-50 p-3 text-sm font-medium text-red-700">
                   ⚠️ Alerte sécurité détectée
                 </div>
               )}
-              <div className="prose prose-sm max-w-none whitespace-pre-wrap text-slate-700">
-                {mutation.data.raw_response}
-              </div>
-              <div className="border-t border-slate-100 pt-3 text-xs text-slate-400">
-                Modèle : {mutation.data.model} · Confiance : {(mutation.data.confidence * 100).toFixed(0)}% · {mutation.data.latency_ms}ms
+              <div className="prose prose-sm max-w-none text-slate-700">
+                <ReactMarkdown>{data.raw_response}</ReactMarkdown>
               </div>
             </div>
           )}
@@ -90,6 +83,19 @@ function DiagnosticModal({ alarmId, onClose }: { alarmId: string; onClose: () =>
 
 export function Dashboard() {
   const [diagAlarm, setDiagAlarm] = useState<string | null>(null);
+
+  const diagMutation = useMutation({
+    mutationFn: (alarmId: string) =>
+      agentApi.diagnose({
+        alarm_code: alarmId,
+        alarm_label: alarmId,
+        alarm_timestamp: new Date().toISOString(),
+        equipment_name: 'Équipement GTB',
+        equipment_type: 'boiler',
+        site_name: 'Bâtiment AER Le Kremlin-Bicêtre',
+        context: {},
+      }),
+  });
 
   const { data: actionPlan = [] } = useQuery({
     queryKey: ['action-plan'],
@@ -109,10 +115,26 @@ export function Dashboard() {
     consigne: 21,
   }));
 
+  function openDiagnostic(alarmId: string) {
+    setDiagAlarm(alarmId);
+    diagMutation.mutate(alarmId);
+  }
+
+  function closeDiagnostic() {
+    setDiagAlarm(null);
+    diagMutation.reset();
+  }
+
   return (
     <div className="space-y-6 p-6">
       {diagAlarm && (
-        <DiagnosticModal alarmId={diagAlarm} onClose={() => setDiagAlarm(null)} />
+        <DiagnosticModal
+          alarmId={diagAlarm}
+          isPending={diagMutation.isPending}
+          error={diagMutation.error}
+          data={diagMutation.data}
+          onClose={closeDiagnostic}
+        />
       )}
 
       <header>
@@ -163,7 +185,7 @@ export function Dashboard() {
                 </div>
               </div>
               <button
-                onClick={() => setDiagAlarm(alarm.alarm_id)}
+                onClick={() => openDiagnostic(alarm.alarm_id)}
                 className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 active:bg-blue-800"
               >
                 Diagnostiquer
